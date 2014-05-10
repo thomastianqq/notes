@@ -10,7 +10,7 @@ Leveldb 是Google公司开源的存储引擎。 该存储引擎是基于日志�
 Leveldb基于LSM-Tree实现。在定义了日志格式，磁盘文件格式的基础上，实现了内存数据写入磁盘的Dump机制，去除冗余数据的Compaction机制，
 内存数据重建与恢复功能，以及读写功能。图-1展示了leveldb的一个概貌。
 
-(![leveldb abstraction](http://i.imgur.com/1sd1LDP.png)
+![leveldb abstraction](http://i.imgur.com/1sd1LDP.png)
 
 本文将按图-1圆圈的分布来组织章节结构：
 * 第一章 LSM-Tree以及Leveldb的简介；
