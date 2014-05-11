@@ -14,4 +14,9 @@
 
 如图2-1所示，文件由Block构成，有的Block会结尾小于7字节的部分会填充0（图中绿色区域）。当然，有的Block在插入一条记录后刚好满了，那就不需要填0处理了。 如果这个Block刚好有7个字节，那就写入一个Record(显然只能写入Header)。
 
-Block是由一系列Record构成。
+Block是由一系列Record构成。每一条Record由Header和Content部分组成，Header包含校验码（4字节），内容长度（2字节），类型信息（1字节），Content是用户写入的数据。 因为一个Block为32K，所以内容长度用2字节可以表示。若用户的数据超过32字节，或者一个Block剩下的空间无法容纳用户数据怎么办？这个时候超出一个Block的数据会被分成多个连续的Record记录在日志文件里。第一个Record的type 表示为FIRST，最后一个LAST, 中间的Record的type 值为MIDDLE。
+
+这种日志文件格式的优点：
+* 易于异常处理；出现异常情况是，忽略掉坏损的Block，处理下一个Block即可。
+* 容易正确切分文件内容，按Block边界切分，比较适合MAPREDUCE处理；
+* 无需额外的meta数据维护较大的日志内容；
