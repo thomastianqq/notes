@@ -110,3 +110,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
   return s;
 }
 ```
+
+## 2.2 磁盘文件（SST）的格式
+
+在Leveldb中，数据最终以SST文件形式存储在磁盘中的。在doc/table_format.txt文件中有记录该文件的一些信息。
