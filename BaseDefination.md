@@ -33,7 +33,8 @@ Status Writer::AddRecord(const Slice& slice) {
   const char* ptr = slice.data();
   size_t left = slice.size();
 
-  // Fragment the record if necessary and emit it.  Note that if slice  // is empty, we still want to iterate once to emit a single
+  // Fragment the record if necessary and emit it.  Note that if slice
+  // is empty, we still want to iterate once to emit a single
   // zero-length record
   Status s;
   bool begin = true;
@@ -44,7 +45,8 @@ Status Writer::AddRecord(const Slice& slice) {
       // 如果剩余空间小于Header的大小，就填充0；
       // 重新起一个新的Block;
       if (leftover > 0) {
-        // Fill the trailer (literal below relies on kHeaderSize being 7)        assert(kHeaderSize == 7);
+        // Fill the trailer (literal below relies on kHeaderSize being 7)
+        assert(kHeaderSize == 7);
         dest_->Append(Slice("\x00\x00\x00\x00\x00\x00", leftover));
       }
       block_offset_ = 0;
