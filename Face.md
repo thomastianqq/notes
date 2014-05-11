@@ -16,7 +16,7 @@
 
 Contents:
 * [0. 前言](https://github.com/fengmao/notes/blob/master/Introduction.md)
-* [1. LSM-Tree模型](https://github.com/fengmao/notes/blob/master/Introduction.md)
+* [1. LSM-Tree模型(目前还没想好从那个角度展开)](https://github.com/fengmao/notes/blob/master/IntroductionOfLSM-Tree.md)
 * [2. Leveldb基本数据结构定义](www.google.com.hk)
 
 
