@@ -20,3 +20,40 @@ Block是由一系列Record构成。每一条Record由Header和Content部分组�
 * 易于异常处理；出现异常情况是，忽略掉坏损的Block，处理下一个Block即可。
 * 容易正确切分文件内容，按Block边界切分，比较适合MAPREDUCE处理；
 * 无需额外的meta数据维护较大的日志内容；
+
+这种实现也有不足之处：
+* 对Record没有Pack机制；
+* 对Block没有作数据压缩；
+
+有关日志实现的代码文件为db/log_format.h log_reader.{h,cc}, log_writer.{h,cc}.
+其中log_format.h 定义了Record的type;
+log_writer.{h, cc}实现了写日志的逻辑。
+```
+Status Writer::AddRecord(const Slice& slice) {
+  const char* ptr = slice.data();
+  size_t left = slice.size();
+
+  // Fragment the record if necessary and emit it.  Note that if slice  // is empty, we still want to iterate once to emit a single
+  // zero-length record
+  Status s;
+  bool begin = true;
+  do {
+    const int leftover = kBlockSize - block_offset_;
+    assert(leftover >= 0); 
+    if (leftover < kHeaderSize) {
+      // Switch to a new block
+      if (leftover > 0) {
+        // Fill the trailer (literal below relies on kHeaderSize being 7)        assert(kHeaderSize == 7);
+        dest_->Append(Slice("\x00\x00\x00\x00\x00\x00", leftover));
+      }
+      block_offset_ = 0;
+    }
+
+    // Invariant: we never leave < kHeaderSize bytes in a block.
+    assert(kBlockSize - block_offset_ - kHeaderSize >= 0);
+
+    const size_t avail = kBlockSize - block_offset_ - kHeaderSize;
+    const size_t fragment_length = (left < avail) ? left : avail;
+    }
+}
+```
