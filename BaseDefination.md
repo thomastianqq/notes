@@ -27,7 +27,7 @@ Block是由一系列Record构成。每一条Record由Header和Content部分组�
 
 有关日志实现的代码文件为db/log_format.h log_reader.{h,cc}, log_writer.{h,cc}.
 其中log_format.h 定义了Record的type;
-log_writer.{h, cc}实现了写日志的逻辑。
+log_writer.{h, cc}实现了写日志的逻辑。 其中，AddRecord是对外开放的接口。
 ```
 Status Writer::AddRecord(const Slice& slice) {
   const char* ptr = slice.data();
@@ -75,6 +75,38 @@ Status Writer::AddRecord(const Slice& slice) {
     begin = false;
     // 若数据没有写完，这些数据会写在连续的Record中；
   } while (s.ok() && left > 0);
+  return s;
+}
+```
+
+将数据写入文件的函数代码如下：
+```
+Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
+  assert(n <= 0xffff);  // Must fit in two bytes
+  assert(block_offset_ + kHeaderSize + n <= kBlockSize);
+
+  // 填充Header
+  // Format the header
+  char buf[kHeaderSize];
+  buf[4] = static_cast<char>(n & 0xff);
+  buf[5] = static_cast<char>(n >> 8);
+  buf[6] = static_cast<char>(t);
+
+  // Compute the crc of the record type and the payload.
+  uint32_t crc = crc32c::Extend(type_crc_[t], ptr, n);
+  crc = crc32c::Mask(crc);                 // Adjust for storage
+  EncodeFixed32(buf, crc);
+
+  // 将数据写入顺序文件
+  // Write the header and the payload
+  Status s = dest_->Append(Slice(buf, kHeaderSize));
+  if (s.ok()) {
+    s = dest_->Append(Slice(ptr, n));
+    if (s.ok()) {
+      s = dest_->Flush();
+    }
+  }
+  block_offset_ += kHeaderSize + n;
   return s;
 }
 ```
