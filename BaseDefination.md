@@ -41,7 +41,8 @@ Status Writer::AddRecord(const Slice& slice) {
     const int leftover = kBlockSize - block_offset_;
     assert(leftover >= 0); 
     if (leftover < kHeaderSize) {
-      // Switch to a new block
+      // 如果剩余空间小于Header的大小，就填充0；
+      // 重新起一个新的Block;
       if (leftover > 0) {
         // Fill the trailer (literal below relies on kHeaderSize being 7)        assert(kHeaderSize == 7);
         dest_->Append(Slice("\x00\x00\x00\x00\x00\x00", leftover));
@@ -55,5 +56,25 @@ Status Writer::AddRecord(const Slice& slice) {
     const size_t avail = kBlockSize - block_offset_ - kHeaderSize;
     const size_t fragment_length = (left < avail) ? left : avail;
     }
+    // 判断每一个Record的Type
+    const bool end = (left == fragment_length);
+    if (begin && end) {
+      type = kFullType;
+    } else if (begin) {
+      type = kFirstType;
+    } else if (end) {
+      type = kLastType;
+    } else {
+      type = kMiddleType;
+    }
+
+    // 写入Record
+    s = EmitPhysicalRecord(type, ptr, fragment_length);
+    ptr += fragment_length;
+    left -= fragment_length;
+    begin = false;
+    // 若数据没有写完，这些数据会写在连续的Record中；
+  } while (s.ok() && left > 0);
+  return s;
 }
 ```
