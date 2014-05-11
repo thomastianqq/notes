@@ -13,7 +13,7 @@ Leveldb基于LSM-Tree实现。在定义了日志格式，磁盘文件格式的�
 ![leveldb abstraction](http://i.imgur.com/1sd1LDP.png)
 
 本文将按图-1圆圈的分布来组织章节结构：
-* 第一章 LSM-Tree以及Leveldb的简介；
+* 第一章 LSM-Tree模型简介；
 * 第二章 描述leveldb的日志格式，磁盘文件格式，内存数据格式，Bloom Filter 以及 Iterator实现；
 * 第三章 分析leveldb的MemTalbe 写入磁盘的过程，Compaction实现，Version和Version的管理，以及Snapshot实现；
 * 第四章 描述leveldb暴露给用户的主要接口；
