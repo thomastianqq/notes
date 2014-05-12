@@ -158,3 +158,7 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 **Footer**
 
 在SST文件的结尾，存储了一段特殊的，固定长度的数据，称之为Footer。这段固定长度的数据中，依次记录了Meta Index Block的句柄，Index Block的句柄，填充数据（如果需要的话），Magic Code。其布局见图2-2 Footer Layout。
+
+## 2.3 Bloom Filter
+
+在Leveldb中，读操作中，可能会扫描大量的磁盘文件。涉及到太多磁盘IO，性能不会好到那里去。因此，在创建SST文件的时候，为每一个Data Block创建了一个Bloom Filter。并且，Bloom Filter的数据存放在Meta Data Block中。
