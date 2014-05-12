@@ -16,7 +16,7 @@
 
 Contents:
 * [0. 前言](https://github.com/fengmao/notes/blob/master/xproject/Introduction.md)
-* [1. LSM-Tree模型(目前还没想好从那个角度展开)](https://github.com/fengmao/notes/blob/master/xproject/IntroductionOfLSM-Tree.md)
+* 1. LSM-Tree模型(目前还没想好从那个角度展开)
 * [2. 基本数据结构定义](https://github.com/fengmao/notes/blob/master/xproject/BaseDefination.md)
 
 
