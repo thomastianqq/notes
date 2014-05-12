@@ -137,6 +137,8 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 
 如图2-3所示，上部分为DataEntry的存储区域，下部分为索引存储区。蓝色部分为创建索引的Data Entry，红色为目标Data Entry。首先，根据索引区域，二分查找定位到目标Key(红色）的前一个索引点，然后采用二分查找定位到红色Key。 在SST文件中，这种类型的Block存储数据，Block级的索引块。
 
+需要注意的是，Data Block在写入文件的时候，会追加5字节的Trailer字段。1字节用于表示Block的压缩类型，4自己存储Data Block的CRC校验码。 每次在读取Data Block时候，会首先解析这5个字段内容，决定是否，以及采用什么算法解压数据，校验数据是否完整。
+
 **Meta Data Block**
 
 对于元数据块（Meta Data Block）而言，建立索引的方式有明显不不同，是对Block中的每一个Data Entry都建立索引。这种Block我们可以理解为，采用自然数0,1,2 .. 作为Key，并不存储在Block中（逻辑上的Key), 每个Entry的均建有索引，存储在Block的结尾处。索引数据是一个数组，数组元素是对应的Data Entry在文件中的Offset. 若要查找第i个Data Entry， 通过索引（数组下标）中的数据，得到具体的Data Entry。相对Data Block而言，这种索引查找效率高，占用更多的存储空间，适合存储元数据。
@@ -154,4 +156,5 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 通常，将SST的Index Block 缓存在Cache中，这样能够加快Search Key的过程。
 
 **Footer**
-在SST文件的结尾，存储了一段特殊的，固定长度的数据，称之为Footer。这段固定长度的数据中，依次记录了Meta Index Block的句柄，Index Block的句柄，填充数据（如果需要的话），
+
+在SST文件的结尾，存储了一段特殊的，固定长度的数据，称之为Footer。这段固定长度的数据中，依次记录了Meta Index Block的句柄，Index Block的句柄，填充数据（如果需要的话），Magic Code。其布局见图2-2 Footer Layout。
