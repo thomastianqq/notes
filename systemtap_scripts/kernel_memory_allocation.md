@@ -1,35 +1,37 @@
-# ץס¿ñµͳÄ´æ½ø­Ît½ÓÚâ£º[Kernel Memory Allocation](http://sourceware.org/systemtap/wiki/WSKmemCacheAlloc) 
+# 抓住狂吃系统内存的进程
+
+原文链接在这里[Kernel Memory Allocation](http://sourceware.org/systemtap/wiki/WSKmemCacheAlloc) 
 
 ### Problem
 
-¸ùoc/slabinfoÖÌ¹©µÄÅ¢£¬ÈºÎªµÀÇ©½ø·èµĳÔµͳÄ´棿ÏÃÕ¸ö¾½«Ì¹©ºܶàÓµÄÅ¢¡£
+根据proc/slabinfo中提供的信息，如何知道那些进程在疯狂的吃系统内存？下面这个脚本将提供很多有用的信息。
 
 ### Script
 
  ```
 #This script displays the number of given slab allocations and the backtraces leading up to it. 
 
- global slab = @1
- global stats, stacks
- probe kernel.function("kmem_cache_alloc") {
-           if (kernel_string($cachep->name) == slab) {
-                             stats[execname()] <<< 1
-                                               stacks[execname(),kernel_string($cachep->name),backtrace()] <<< 1
-                                                       }   
- }
+global slab = @1
+global stats, stacks
+probe kernel.function("kmem_cache_alloc") {
+        if (kernel_string($cachep->name) == slab) {
+                stats[execname()] <<< 1
+                stacks[execname(),kernel_string($cachep->name),backtrace()] <<< 1
+        }   
+}
 # Exit after 10 seconds
 probe timer.ms(10000) { exit () }
 probe end {
-          printf("Number of %s slab allocations by process\n", slab)
-                    foreach ([exec] in stats) {
-                                      printf("%s:\t%d\n",exec,@count(stats[exec]))
-                                                }   
-                  printf("\nBacktrace of processes when allocating\n")
-                            foreach ([proc,cache,bt] in stacks) {
-                                              printf("Exec: %s Name: %s  Count: %d\n",proc,cache,@count(stacks[proc,cache,bt]))
-                                                                print_stack(bt)
-                                                                                printf("\n-------------------------------------------------------\n\n")
-                                                                                        }
+        printf("Number of %s slab allocations by process\n", slab)
+        foreach ([exec] in stats) {
+                printf("%s:\t%d\n",exec,@count(stats[exec]))
+        }   
+        printf("\nBacktrace of processes when allocating\n")
+        foreach ([proc,cache,bt] in stacks) {
+                printf("Exec: %s Name: %s  Count: %d\n",proc,cache,@count(stacks[proc,cache,bt]))
+                print_stack(bt)
+                printf("\n-------------------------------------------------------\n\n")
+        }
 }
 ```
 
