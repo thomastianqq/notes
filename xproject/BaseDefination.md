@@ -6,6 +6,8 @@
 
 在Leveldb中，日志被顺序写入文件中。当需要回复数据的时候，扫描日志文件，读取每一条日志记录，恢复内存中的数据。在doc/log_format.txt文件中，有详细描述日志文件以及其格式定义。
 
+**日志文件布局**
+
 日志文件由一系列32K大小的块（Block)构成，每个Block中依次存放日志条目（Record)，每一个Record包含7字节的头（Header)其余部分为日志内容。 若一个Block的剩余部分字节数小于7字节（Header的大小），则该剩余部分填充0处理。图2-1展示日志文件的格式，Block的布局，以及Record的布局。
 
 ![Log Format](http://i.imgur.com/xYio5k9.png)
@@ -24,6 +26,8 @@ Block是由一系列Record构成。每一条Record由Header和Content部分组�
 这种实现也有不足之处：
 * 对Record没有Pack机制；
 * 对Block没有作数据压缩；
+
+**日志文件实现**
 
 有关日志实现的代码文件为db/log_format.h log_reader.{h,cc}, log_writer.{h,cc}.
 其中log_format.h 定义了Record的type;
@@ -115,11 +119,15 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 
 ## 2.2 磁盘文件（SST）的格式
 
+**磁盘文件布局**
+
 在Leveldb中，数据最终以SST文件形式存储在磁盘中的。在doc/table_format.txt文件中有记录该文件的一些信息。SST文件以4K大小的块(Block)构成。这些Block按其存储的数据可以分为 数据块(Data Block), 元数据(Meta Data Block), 索引数据块(Index Block)。在文件的结尾存成一个固定长度的Footer, 包含元数据索引句柄，数据索引句柄，或许有填充数据，Magic Code。图2-2展示了SST文件的整体布局。
 
 ![](http://i.imgur.com/UVLVK2V.png)
 
 图2-2 SST Layout
+
+**Data Block**
 
 在SST文件中，目前有2中类型的Block, 一种是数据Block， 存储用户数据，如图2-2中的Data Block Layout所示；另外一种是Meta Data Block。两种Block的区别主要在于索引的不同。对于Data Block而言，并不是每一个Data Entry都会创建索引，而是隔一定数量的Data Entry，才对这个Entry创建索引。索引是一个Map, 其Key就是被索引Data Entry的key, 其Value是这个Data Entry在文件中的Offset. 这个Map就以数组的形式存储在Block结尾处。Map中的每一项内容称之为RestartPoint。 由于为了节约存储空间，Data Block中的Data Entry采用前缀压缩的方式存储。具体而言，若第i+1个DataEntry 与 第i个Data Entry的Key相似部分的话，第i + 1个Data Entry不需要存储相同的内容，只存储不同部分的内容。但是，被索引的Data Entry需要存储完整的Key。考虑到Key是有序的，相邻Key拥有相同内容是比较常见的。这种组织方式能够节约存储空间。
 
@@ -128,6 +136,8 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 ![](http://i.imgur.com/OYAT4sa.png)
 
 如图2-3所示，上部分为DataEntry的存储区域，下部分为索引存储区。蓝色部分为创建索引的Data Entry，红色为目标Data Entry。首先，根据索引区域，二分查找定位到目标Key(红色）的前一个索引点，然后采用二分查找定位到红色Key。 在SST文件中，这种类型的Block存储数据，Block级的索引块。
+
+**Meta Data Block**
 
 对于元数据块（Meta Data Block）而言，建立索引的方式有明显不不同，是对Block中的每一个Data Entry都建立索引。这种Block我们可以理解为，采用自然数0,1,2 .. 作为Key，并不存储在Block中（逻辑上的Key), 每个Entry的均建有索引，存储在Block的结尾处。索引数据是一个数组，数组元素是对应的Data Entry在文件中的Offset. 若要查找第i个Data Entry， 通过索引（数组下标）中的数据，得到具体的Data Entry。相对Data Block而言，这种索引查找效率高，占用更多的存储空间，适合存储元数据。
 
