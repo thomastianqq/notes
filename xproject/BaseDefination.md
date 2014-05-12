@@ -121,4 +121,11 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 
 图2-2 SST Layout
 
+在SST文件中，目前有2中类型的Block, 一种是数据Block， 存储用户数据，如图2-2中的Data Block Layout所示；另外一种是Meta Data Block。两种Block的区别主要在于索引的不同。对于Data Block而言，并不是每一个Data Entry都会创建索引，而是隔一定数量的Data Entry，才对这个Entry创建索引。索引是一个Map, 其Key就是被索引Data Entry的key, 其Value是这个Data Entry在文件中的Offset. 这个Map就以数组的形式存储在Block结尾处。Map中的每一项内容称之为RestartPoint。 由于为了节约存储空间，Data Block中的Data Entry采用前缀压缩的方式存储。具体而言，若第i+1个DataEntry 与 第i个Data Entry的Key相似部分的话，第i + 1个Data Entry不需要存储相同的内容，只存储不同部分的内容。但是，被索引的Data Entry需要存储完整的Key。考虑到Key是有序的，相邻Key拥有相同内容是比较常见的。这种组织方式能够节约存储空间。
+
+这种存储格式节约存储空间，又建立索引加快查找。有了数组型的索引，并且Key是有序的，可以二分查找法快速定位到目标Key的前一个索引Key, 然后通过线下查找定位具体的Key，图2-3展示了如何查找一个给定的Key。
+
+![](http://i.imgur.com/OYAT4sa.png)
+
+如图2-3所示，上部分为DataEntry的存储区域，下部分为索引存储区。蓝色部分为创建索引的Data Entry，红色为目标Data Entry。首先，根据索引区域，二分查找定位到目标Key(红色）的前一个索引点，然后采用二分查找定位到红色Key。
 
