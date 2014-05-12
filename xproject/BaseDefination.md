@@ -141,3 +141,17 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 
 对于元数据块（Meta Data Block）而言，建立索引的方式有明显不不同，是对Block中的每一个Data Entry都建立索引。这种Block我们可以理解为，采用自然数0,1,2 .. 作为Key，并不存储在Block中（逻辑上的Key), 每个Entry的均建有索引，存储在Block的结尾处。索引数据是一个数组，数组元素是对应的Data Entry在文件中的Offset. 若要查找第i个Data Entry， 通过索引（数组下标）中的数据，得到具体的Data Entry。相对Data Block而言，这种索引查找效率高，占用更多的存储空间，适合存储元数据。
 
+**Meta Index Block**
+
+在SST文件中，接近这数据Block存放的是Meta Data Block, 而文件可能存在多个Meta Data Block, 为了能够快速检索出具体的Meta Data Block, SST文件对Meta Data Block作了索引。索引数据存储在一个Data Block中，其Key是Meta Data Block的名称，其Value是一个Block句柄，该句柄记录被索引的Block在文件中的Offset 和 Size。根据这个句柄，能够读出具体Block的数据。
+
+在目前的实现中，整个文件只有一个Meta Data Block, 所以Meta Index Block中只有一条记录。
+
+**Index Block**
+
+SST文件为每一个Block创建了索引。这些索引数据存储为一个Data Block, 位于Meta Index Block 结尾处。索引数据组织成一个Key-Value 表，其Key是一个不小于Data Block中的最大Key(显然是Data Block的最后一个Key)，并且小于相邻的下一个Block的最小Key 。为了节省空间，在创建SST文件的时候，会在前一个文件的最大Key 与 相邻文件的最小Key之间选择一个“最短”的Key, 这样能够节省存储空间。索引表的Value是一个Block句柄。
+
+通常，将SST的Index Block 缓存在Cache中，这样能够加快Search Key的过程。
+
+**Footer**
+在SST文件的结尾，存储了一段特殊的，固定长度的数据，称之为Footer。这段固定长度的数据中，依次记录了Meta Index Block的句柄，Index Block的句柄，填充数据（如果需要的话），
