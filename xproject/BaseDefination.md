@@ -27,9 +27,7 @@ Block是由一系列Record构成。每一条Record由Header和Content部分组�
 * 对Record没有Pack机制；
 * 对Block没有作数据压缩；
 
-## 2.2 磁盘文件（SST）的格式
-
-### 2.2.1 磁盘文件布局
+## 2.2 磁盘文件（SST）布局
 
 在Leveldb中，数据最终以SST文件形式存储在磁盘中的。在doc/table_format.txt文件中有记录该文件的一些信息。SST文件以4K大小的块(Block)构成。这些Block按其存储的数据可以分为 数据块(Data Block), 元数据(Meta Data Block), 索引数据块(Index Block)。在文件的结尾存成一个固定长度的Footer, 包含元数据索引句柄，数据索引句柄，或许有填充数据，Magic Code。图2-2展示了SST文件的整体布局。
 
@@ -98,7 +96,7 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 在SST文件的结尾，存储了一段特殊的，固定长度的数据，称之为Footer。这段固定长度的数据中，依次记录了Meta Index Block的句柄，Index Block的句柄，填充数据（如果需要的话），Magic Code。其布局见图2-2 Footer Layout。
 
 
-## 2.4 磁盘文件（SST）构建
+## 2.3 磁盘文件（SST）构建
 
 在分析了SST布局，以及Data Block的构建和读取后，接下来就比较容易说明如何构建SST文件了。 为了方便叙述，将描述block在文件中的起始地址（offset) 以及Block大小（size) 称之为Block句柄。 在leveldb中，需要构建SST文件的场景有：
 
@@ -127,5 +125,5 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 图2-4 SST文件的构造示意图
  
 
-
+## 2.4 SST文件的Iterator
  
