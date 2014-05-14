@@ -119,11 +119,26 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 * 8)  将index block写入文件；
 * 6)  构建Footer，填充meta 相关的值，并写入文件；
 
-
 ![SST Construction](http://i.imgur.com/x4rhV80.png)
 
 图2-4 SST文件的构造示意图
  
+可见，构建SST文件过程中，先写入Data Block（具体数量由文件大小决定，每个Block数量固定），接着写入Meta Block, 目前实现中只存在一个Meta Block, 接着写入Meta Index Block， 也只有1个，接着写入Index Block, 数量也是一个，但是大小可能会比Data Block大，最后写入Footer数据。
+## 2.4 读取SST文件
 
-## 2.4 SST文件的Iterator
+在leveldb中，也存在2种不同的读取SST文件的场景，一是随机读取，另一个是全遍历读取。这两种读取场景都是通过Iterator来完成的。
+无论哪种读取场景，读需要将SST文件的Index Block和Meta Block加载到内存，具体过程：
+
+* 读取Footer数据，解析出Index Block句柄，meta index Block的句柄；
+* 读入Index Block到内存；
+* 根据meta index block读取Meta block到内存；
+
+若读取某个Data Block中的Key-Value, 输入目标Key：
+
+* 根据meta block内容（bloom filter)，判断目标Key 是否在文件中；
+* 若在文件中，根据目标key, 在Index Block中找到目标Data Block的句柄；
+* 读取目标Data Block到内存，查找目标Key是否在目标Block中；
+
+由此可见，读取SST文件的过程和构建SST文件的过程近似相反。
+
  
