@@ -221,3 +221,90 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   }
 }
 ```
+
+**TableBuilder::Flush**
+
+```
+void TableBuilder::Flush() {
+  Rep* r = rep_;
+  assert(!r->closed);
+  if (!ok()) return;
+  if (r->data_block.empty()) return;
+  assert(!r->pending_index_entry);
+  //将当前的DataBlock写入文件
+  WriteBlock(&r->data_block, &r->pending_handle);
+  if (ok()) {
+    //若写入成功，将pending_index_entry 置为true,
+    //再下一次添加Key,或者调用Finish函数时候，会为当前Block创建索引
+    r->pending_index_entry = true;
+    //调用文件的flush
+    r->status = r->file->Flush();
+  }
+  if (r->filter_block != NULL) {
+    //将对当前Data Block的Key创建Filter数据，并且写入到Filter Block,
+    //Reset Filter Block 为新的Block作准备
+    r->filter_block->StartBlock(r->offset);
+  }
+}
+
+void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
+  assert(ok());
+  Rep* r = rep_;
+  //调用Block的Finish函数，返回当前Block的内存指针
+  Slice raw = block->Finish();
+
+  //根据配置中的压缩算法类型{不压缩，或者Snappy算法压缩}决定是否压缩
+  //目前只支持snappy算法，当然可以扩展其他的算法
+  Slice block_contents;
+  CompressionType type = r->options.compression;
+  switch (type) {
+    case kNoCompression:
+      block_contents = raw;
+      break;
+
+    case kSnappyCompression: {
+      std::string* compressed = &r->compressed_output;
+      if (port::Snappy_Compress(raw.data(), raw.size(), compressed) &&
+          compressed->size() < raw.size() - (raw.size() / 8u)) {
+        block_contents = *compressed;
+      } else {
+        // Snappy not supported, or compressed less than 12.5%, so just
+        // store uncompressed form
+        block_contents = raw;
+        type = kNoCompression;
+      }
+      break;
+    }
+  }
+  //将数据写入文件
+  WriteRawBlock(block_contents, type, handle);
+  //清理数据，准备写入新的Block
+  r->compressed_output.clear();
+  block->Reset();
+
+
+void TableBuilder::WriteRawBlock(const Slice& block_contents,
+                                 CompressionType type,
+                                 BlockHandle* handle) {
+  Rep* r = rep_;
+  //计算该Block的句柄（在文件中的offset以及size)
+  handle->set_offset(r->offset);
+  handle->set_size(block_contents.size());
+  //将内容append到文件中
+  r->status = r->file->Append(block_contents);
+  if (r->status.ok()) {
+    //这里是构建Block的Trailer
+    //Block的压缩类型，CRC校验数据都没有记录在Block中，
+    //记录在Trailer中，追加在对应Block的后面。
+    char trailer[kBlockTrailerSize];
+    trailer[0] = type;
+    uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
+    crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
+    EncodeFixed32(trailer+1, crc32c::Mask(crc));
+    r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
+    if (r->status.ok()) {
+      r->offset += block_contents.size() + kBlockTrailerSize;
+    }
+  }
+}
+```
