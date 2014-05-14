@@ -112,7 +112,7 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 * 2)  若当前的Data Block未满，则将1）中的Key-Value添加到当前Data Block中；
 * 3)  若当前的Data Block已经满了，则：
       * a) 为根据当前Block的所有Key调用filter-policy创建一个filter,并把filter的内容加到metablock中；
-      * b) 根据当前Block的最后一个key（称为A), 和当前输入的key(称为B），结合Comparator 找到一个比A大，且比B小的Key——X，
+      * b) 根据当前Block的最后一个key（称为A), 和当前输入的key(称为B），结合Comparator找到一个比A大，且比B小的X，
       * c) 将{X, 当前Block在文件中的offset 和 size} 作为Key-Value添加到Index Block中；
 * 4)  重复上述步骤，直到所有key-value处理完毕，或者文件大小超过阈值才结束；
 * 5)  为meta block创建索引数据，写入meta index block;
