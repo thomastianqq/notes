@@ -308,3 +308,142 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
   }
 }
 ```
+
+**Table::Finish**
+
+```
+Status TableBuilder::Finish() {
+  Rep* r = rep_;
+  Flush();
+  assert(!r->closed);
+  r->closed = true;
+  BockHandle filter_block_handle, metaindex_block_handle, index_block_handle;
+  // Write filter block
+  // 很明显，将filter block的数据写入文件，并且不压缩；
+  // block的句柄保存在filter block handle中
+  if (ok() && r->filter_block != NULL) {
+    WriteRawBlock(r->filter_block->Finish(), kNoCompression,
+                  &filter_block_handle);
+  }
+
+  // Write metaindex block
+  if (ok()) {
+    //在meta index block中为filter block创建一个索引
+    BlockBuilder meta_index_block(&r->options);
+    if (r->filter_block != NULL) {
+      // Add mapping from "filter.Name" to location of filter data
+      std::string key = "filter.";
+      key.append(r->options.filter_policy->Name());
+      std::string handle_encoding;
+      filter_block_handle.EncodeTo(&handle_encoding);
+      meta_index_block.Add(key, handle_encoding);
+    }
+    //将meta index block写入文件
+    // TODO(postrelease): Add stats and other meta blocks
+    WriteBlock(&meta_index_block, &metaindex_block_handle);
+  }
+
+  // Write index block
+  // 将index block写入文件
+  if (ok()) {
+    if (r->pending_index_entry) {
+      r->options.comparator->FindShortSuccessor(&r->last_key);
+      std::string handle_encoding;
+      r->pending_handle.EncodeTo(&handle_encoding);
+      r->index_block.Add(r->last_key, Slice(handle_encoding));
+      r->pending_index_entry = false;
+    }
+    WriteBlock(&r->index_block, &index_block_handle);
+  }
+
+  // Write footer
+  //写入footer, 可以参考图2-2 SST Layout
+  if (ok()) {
+    Footer footer;
+    footer.set_metaindex_handle(metaindex_block_handle);
+    footer.set_index_handle(index_block_handle);
+    std::string footer_encoding;
+    footer.EncodeTo(&footer_encoding);
+    r->status = r->file->Append(footer_encoding);
+    if (r->status.ok()) {
+      r->offset += footer_encoding.size();
+    }
+  }
+  return r->status;
+}
+```
+
+### SST的Iterator接口
+
+在Leveldb中，通过Iterator来读取SST文件。读取SST文件主要有随机读取一个Key-Value, 和完整读取整个文件的Key-Value. 前者，用户完成用户的数据读取工作，或者主要用在Compaction的过程中。
+SST的Iterator实现主要在table.{h, cc}文件中，由Table类实现, 主要实现了```Open, NewIterator, ApproximateOffsetOf``` 三个接口。
+
+**Table::Open**
+
+```
+Status Table::Open(const Options& options,
+                   RandomAccessFile* file,
+                   uint64_t size,
+                   Table** table) {
+  *table = NULL;
+  if (size < Footer::kEncodedLength) {
+    return Status::InvalidArgument("file is too short to be an sstable");
+  }
+
+  // 注意传入的参数size, 知道size 后可以定位footer了，因为footer在文件结尾，且固定长度。
+  // 换句话说，这里可以获取footer在文件中的offset 和 size.
+  char footer_space[Footer::kEncodedLength];
+  Slice footer_input;
+  Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
+                        &footer_input, footer_space);
+  if (!s.ok()) return s;
+
+  // 解析footer, 将metablock index, block index等读出
+  Footer footer;
+  s = footer.DecodeFrom(&footer_input);
+  if (!s.ok()) return s;
+
+  // Read the index block
+  BlockContents contents;
+  Block* index_block = NULL;
+  // 读出索引block到内存，方便读取文件的data block
+  if (s.ok()) {
+    s = ReadBlock(file, ReadOptions(), footer.index_handle(), &contents);
+    if (s.ok()) {
+      index_block = new Block(contents);
+    }
+  }
+
+  if (s.ok()) {
+    // 读出filter block, 将这部分数据读到内存，有利于加快读操作
+    // We've successfully read the footer and the index block: we're
+    // ready to serve requests.
+    Rep* rep = new Table::Rep;
+    rep->options = options;
+    rep->file = file;
+    rep->metaindex_handle = footer.metaindex_handle();
+    rep->index_block = index_block;
+    rep->cache_id = (options.block_cache ? options.block_cache->NewId() : 0);
+    rep->filter_data = NULL;
+    rep->filter = NULL;
+    *table = new Table(rep);
+    (*table)->ReadMeta(footer);
+  } else {
+    if (index_block) delete index_block;
+  }
+
+  return s;
+}
+```
+
+**Table::NewIterator**
+
+该函数调用NewTwoLevelIterator, 我们注意该函数的参数， 一个是index_block->NewIterator(), 还有一个函数指针BlockReader. 代码如下：
+
+```
+Iterator* Table::NewIterator(const ReadOptions& options) const {
+  return NewTwoLevelIterator(
+      rep_->index_block->NewIterator(rep_->options.comparator),
+      &Table::BlockReader, const_cast<Table*>(this), options);
+}
+```
