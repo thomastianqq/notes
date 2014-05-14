@@ -100,7 +100,7 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 
 ## 2.4 磁盘文件（SST）构建
 
-在分析了SST布局，以及Data Block的构建和读取后，接下来就比较容易说明如何构建SST文件了。 在leveldb中，需要构建SST文件的场景有：
+在分析了SST布局，以及Data Block的构建和读取后，接下来就比较容易说明如何构建SST文件了。 为了方便叙述，将描述block在文件中的起始地址（offset) 以及Block大小（size) 称之为Block句柄。 在leveldb中，需要构建SST文件的场景有：
 
 * 内存中有序的Key-Value需要Dump 到level 0;
 * 在Compaction的场景中，多个文件合并生成一个新的SST文件。
@@ -113,9 +113,9 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 * 3)  若当前的Data Block已经满了，则：
       * a) 为根据当前Block的所有Key调用filter-policy创建一个filter,并把filter的内容加到metablock中；
       * b) 根据当前Block的最后一个key（称为A), 和当前输入的key(称为B），结合Comparator找到一个比A大，且比B小的X，
-      * c) 将{X, 当前Block在文件中的offset 和 size} 作为Key-Value添加到Index Block中；
+      * c) 将{X, 当前Block句柄} 作为Key-Value添加到Index Block中；
 * 4)  重复上述步骤，直到所有key-value处理完毕，或者文件大小超过阈值才结束；
-* 5)  为meta block创建索引数据，写入meta index block;
+* 5)  将meta block名称和meta block的句柄，作为Key-Value 写入meta index block;
 * 6)  将meta block 写入文件；
 * 7)  将meta index block写入文件；
 * 8)  将index block写入文件；
