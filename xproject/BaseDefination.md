@@ -162,3 +162,62 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 ## 2.3 Bloom Filter
 
 在Leveldb中，读操作中，可能会扫描大量的磁盘文件。涉及到太多磁盘IO，性能不会好到那里去。因此，在创建SST文件的时候，为每一个Data Block创建了一个Bloom Filter。并且，Bloom Filter的数据存放在Meta Data Block中。
+
+## 2.4 磁盘文件（SST）构建和Iterator接口实现
+
+**构建SST文件**
+
+SST文件的构建代码在```table/table_builder.{h, cc}```中，其中```table_builder.h```定义了接口:
+
+* TableBuilder(const Options& options, WritableFile* file); 构造函数，file是可写文件
+*  void Add(const Slice& key, const Slice& value);  添加一个Key，Value
+*  Status status() const; 获取当前状态
+*  Status Finish();  完成一个文件（创建文件完成）
+*  void Abandon(); 放弃创建文件
+*  uint64_t NumEntries() const; Data Entry的数量
+*  uint64_t FileSize() const; 文件的大小
+
+在leveldb中，有2个场景需要构建新的SST文件。从内存中的MemTable数据dump到level 0， 另一场景是在compact过程中生成新的SST文件。通常，无论是memtable, 还是compact过程，都会创建一个Iterator, 遍历Iterator能够按序读取所有Key-Value, 然后，依次调用TableBuilder的Add接口，来完成文件构建。本文主要通过代码注释的方式来分析其逻辑流程。
+
+**TableBuilder::Add**
+
+```
+void TableBuilder::Add(const Slice& key, const Slice& value) {
+  Rep* r = rep_;
+  assert(!r->closed);
+  if (!ok()) return;
+  if (r->num_entries > 0) {
+    assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
+  }
+
+  // 若一个Data Block满了，则将pending_index_entry置为true.
+  // 将为该Data Block创建索引，调用comparator->FindShortestSeparator函数。
+  // 在last_key（该Data Block的最大Key）和 下一个要写入的Key之间找一个"Key"，
+  // 尽量让这个Key比较短小，从而节约了索引Block的存储空间。
+  if (r->pending_index_entry) {
+    assert(r->data_block.empty());
+    r->options.comparator->FindShortestSeparator(&r->last_key, key);
+    std::string handle_encoding;
+    r->pending_handle.EncodeTo(&handle_encoding);
+    r->index_block.Add(r->last_key, Slice(handle_encoding));
+    r->pending_index_entry = false;
+  }
+
+  //将Key收集在Filter Block中
+  if (r->filter_block != NULL) {
+    r->filter_block->AddKey(key);
+  }
+ 
+  //调用当前data block的Add函数，将Key-Value添加到当前的DataBlock中
+  r->last_key.assign(key.data(), key.size());
+  r->num_entries++;
+  r->data_block.Add(key, value);
+
+  //若当前的Data Block尺寸超过阈值，则调用Flush 将当前文件写入磁盘，
+  //并开始新的Data Block.
+  const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
+  if (estimated_block_size >= r->options.block_size) {
+    Flush();
+  }
+}
+```
