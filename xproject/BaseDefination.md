@@ -119,7 +119,7 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 
 ## 2.2 磁盘文件（SST）的格式
 
-**磁盘文件布局**
+### 2.2.1 磁盘文件布局
 
 在Leveldb中，数据最终以SST文件形式存储在磁盘中的。在doc/table_format.txt文件中有记录该文件的一些信息。SST文件以4K大小的块(Block)构成。这些Block按其存储的数据可以分为 数据块(Data Block), 元数据(Meta Data Block), 索引数据块(Index Block)。在文件的结尾存成一个固定长度的Footer, 包含元数据索引句柄，数据索引句柄，或许有填充数据，Magic Code。图2-2展示了SST文件的整体布局。
 
@@ -127,17 +127,29 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
 
 图2-2 SST Layout
 
-**Data Block**
+**Data Block 构建**
 
-在SST文件中，目前有2中类型的Block, 一种是数据Block， 存储用户数据，如图2-2中的Data Block Layout所示；另外一种是Meta Data Block。两种Block的区别主要在于索引的不同。对于Data Block而言，并不是每一个Data Entry都会创建索引，而是隔一定数量的Data Entry，才对这个Entry创建索引。索引是一个Map, 其Key就是被索引Data Entry的key, 其Value是这个Data Entry在文件中的Offset. 这个Map就以数组的形式存储在Block结尾处。Map中的每一项内容称之为RestartPoint。 由于为了节约存储空间，Data Block中的Data Entry采用前缀压缩的方式存储。具体而言，若第i+1个DataEntry 与 第i个Data Entry的Key相似部分的话，第i + 1个Data Entry不需要存储相同的内容，只存储不同部分的内容。但是，被索引的Data Entry需要存储完整的Key。考虑到Key是有序的，相邻Key拥有相同内容是比较常见的。这种组织方式能够节约存储空间。
+在SST文件中，目前有2中类型的Block, 一种是数据Block， 存储用户数据，如图2-2中的Data Block Layout所示；另外一种是Meta Data Block。两种Block的区别主要在于索引的不同。对于Data Block而言，并不是每一个Data Entry都会创建索引，而是隔一定数量的Data Entry，才对这个Entry创建索引。索引是一个Map, 其Key就是被索引Data Entry的key, 其Value是这个Data Entry在文件中的Offset. 这个Map就以数组的形式存储在Block结尾处。Map中的每一项内容称之为RestartPoint。 
 
-这种存储格式节约存储空间，又建立索引加快查找。有了数组型的索引，并且Key是有序的，可以二分查找法快速定位到目标Key的前一个索引Key, 然后通过线下查找定位具体的Key，图2-3展示了如何查找一个给定的Key。
+在leveldb中，Data Block主要是存储用户数据，和存储Block的索引数据。Block中的数据是按照Key严格有序的。那Data Block是如何构造出来的呢？ 只有在内存table dump到磁盘，或者在compaction的过程中，会创建SST文件，只有在构造SST 文件的过程中才会构造Data Block。 上述2个场景的数据都是有序的。
 
-![](http://i.imgur.com/OYAT4sa.png)
+由于为了节约存储空间，Data Block中的Data Entry采用前缀压缩的方式存储。具体而言，若第i+1个DataEntry 与 第i个Data Entry的Key相似部分的话，第i + 1个Data Entry不需要存储相同的内容，只存储不同部分的内容。但是，被索引的Data Entry需要存储完整的Key。考虑到Key是有序的，相邻Key拥有相同内容是比较常见的。这种组织方式能够节约存储空间。图2-3展示了一个普通的Data Block的构建过程：
 
-如图2-3所示，上部分为DataEntry的存储区域，下部分为索引存储区。蓝色部分为创建索引的Data Entry，红色为目标Data Entry。首先，根据索引区域，二分查找定位到目标Key(红色）的前一个索引点，然后采用二分查找定位到红色Key。 在SST文件中，这种类型的Block存储数据，Block级的索引块。
+* 输入一个Key-Value集合，按Key有序；
+* 构建Data Entry(将key前缀压缩，和value 拼在一起，并在最前面拼接key, value的长度信息）；
+* 若需要创建Restart Point，将当前Key的在block中的offset存放到restart point 数组中；
+* 将构建好的Data Entry依次写入文件；
+* 将Restart Point数组中的数字依次写入文件（每个元素4字节，不压缩）；
+* 将Restart Point数组的长度写入文件；
+* 填充Trailer数据写入文件（Trailer数据长度固定）。
 
-需要注意的是，Data Block在写入文件的时候，会追加5字节的Trailer字段。1字节用于表示Block的压缩类型，4自己存储Data Block的CRC校验码。 每次在读取Data Block时候，会首先解析这5个字段内容，决定是否，以及采用什么算法解压数据，校验数据是否完整。
+
+![Block Construct](http://i.imgur.com/jgF8KdB.png)
+
+
+**Data Block读取** 
+
+
 
 **Meta Data Block**
 
@@ -159,291 +171,10 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 
 在SST文件的结尾，存储了一段特殊的，固定长度的数据，称之为Footer。这段固定长度的数据中，依次记录了Meta Index Block的句柄，Index Block的句柄，填充数据（如果需要的话），Magic Code。其布局见图2-2 Footer Layout。
 
-## 2.3 Bloom Filter
 
-在Leveldb中，读操作中，可能会扫描大量的磁盘文件。涉及到太多磁盘IO，性能不会好到那里去。因此，在创建SST文件的时候，为每一个Data Block创建了一个Bloom Filter。并且，Bloom Filter的数据存放在Meta Data Block中。
+## 2.4 磁盘文件（SST）构建
 
-## 2.4 磁盘文件（SST）构建和Iterator接口实现
-
-**构建SST文件**
-
-SST文件的构建代码在```table/table_builder.{h, cc}```中，其中```table_builder.h```定义了接口:
-
-* TableBuilder(const Options& options, WritableFile* file); 构造函数，file是可写文件
-*  void Add(const Slice& key, const Slice& value);  添加一个Key，Value
-*  Status status() const; 获取当前状态
-*  Status Finish();  完成一个文件（创建文件完成）
-*  void Abandon(); 放弃创建文件
-*  uint64_t NumEntries() const; Data Entry的数量
-*  uint64_t FileSize() const; 文件的大小
-
-在leveldb中，有2个场景需要构建新的SST文件。从内存中的MemTable数据dump到level 0， 另一场景是在compact过程中生成新的SST文件。通常，无论是memtable, 还是compact过程，都会创建一个Iterator, 遍历Iterator能够按序读取所有Key-Value, 然后，依次调用TableBuilder的Add接口，来完成文件构建。本文主要通过代码注释的方式来分析其逻辑流程。
-
-**TableBuilder::Add**
-
-```
-void TableBuilder::Add(const Slice& key, const Slice& value) {
-  Rep* r = rep_;
-  assert(!r->closed);
-  if (!ok()) return;
-  if (r->num_entries > 0) {
-    assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
-  }
-
-  // 若一个Data Block满了，则将pending_index_entry置为true.
-  // 将为该Data Block创建索引，调用comparator->FindShortestSeparator函数。
-  // 在last_key（该Data Block的最大Key）和 下一个要写入的Key之间找一个"Key"，
-  // 尽量让这个Key比较短小，从而节约了索引Block的存储空间。
-  if (r->pending_index_entry) {
-    assert(r->data_block.empty());
-    r->options.comparator->FindShortestSeparator(&r->last_key, key);
-    std::string handle_encoding;
-    r->pending_handle.EncodeTo(&handle_encoding);
-    r->index_block.Add(r->last_key, Slice(handle_encoding));
-    r->pending_index_entry = false;
-  }
-
-  //将Key收集在Filter Block中
-  if (r->filter_block != NULL) {
-    r->filter_block->AddKey(key);
-  }
  
-  //调用当前data block的Add函数，将Key-Value添加到当前的DataBlock中
-  r->last_key.assign(key.data(), key.size());
-  r->num_entries++;
-  r->data_block.Add(key, value);
-
-  //若当前的Data Block尺寸超过阈值，则调用Flush 将当前文件写入磁盘，
-  //并开始新的Data Block.
-  const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
-  if (estimated_block_size >= r->options.block_size) {
-    Flush();
-  }
-}
-```
-
-**TableBuilder::Flush**
-
-```
-void TableBuilder::Flush() {
-  Rep* r = rep_;
-  assert(!r->closed);
-  if (!ok()) return;
-  if (r->data_block.empty()) return;
-  assert(!r->pending_index_entry);
-  //将当前的DataBlock写入文件
-  WriteBlock(&r->data_block, &r->pending_handle);
-  if (ok()) {
-    //若写入成功，将pending_index_entry 置为true,
-    //再下一次添加Key,或者调用Finish函数时候，会为当前Block创建索引
-    r->pending_index_entry = true;
-    //调用文件的flush
-    r->status = r->file->Flush();
-  }
-  if (r->filter_block != NULL) {
-    //将对当前Data Block的Key创建Filter数据，并且写入到Filter Block,
-    //Reset Filter Block 为新的Block作准备
-    r->filter_block->StartBlock(r->offset);
-  }
-}
-
-void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
-  assert(ok());
-  Rep* r = rep_;
-  //调用Block的Finish函数，返回当前Block的内存指针
-  Slice raw = block->Finish();
-
-  //根据配置中的压缩算法类型{不压缩，或者Snappy算法压缩}决定是否压缩
-  //目前只支持snappy算法，当然可以扩展其他的算法
-  Slice block_contents;
-  CompressionType type = r->options.compression;
-  switch (type) {
-    case kNoCompression:
-      block_contents = raw;
-      break;
-
-    case kSnappyCompression: {
-      std::string* compressed = &r->compressed_output;
-      if (port::Snappy_Compress(raw.data(), raw.size(), compressed) &&
-          compressed->size() < raw.size() - (raw.size() / 8u)) {
-        block_contents = *compressed;
-      } else {
-        // Snappy not supported, or compressed less than 12.5%, so just
-        // store uncompressed form
-        block_contents = raw;
-        type = kNoCompression;
-      }
-      break;
-    }
-  }
-  //将数据写入文件
-  WriteRawBlock(block_contents, type, handle);
-  //清理数据，准备写入新的Block
-  r->compressed_output.clear();
-  block->Reset();
 
 
-void TableBuilder::WriteRawBlock(const Slice& block_contents,
-                                 CompressionType type,
-                                 BlockHandle* handle) {
-  Rep* r = rep_;
-  //计算该Block的句柄（在文件中的offset以及size)
-  handle->set_offset(r->offset);
-  handle->set_size(block_contents.size());
-  //将内容append到文件中
-  r->status = r->file->Append(block_contents);
-  if (r->status.ok()) {
-    //这里是构建Block的Trailer
-    //Block的压缩类型，CRC校验数据都没有记录在Block中，
-    //记录在Trailer中，追加在对应Block的后面。
-    char trailer[kBlockTrailerSize];
-    trailer[0] = type;
-    uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
-    crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
-    EncodeFixed32(trailer+1, crc32c::Mask(crc));
-    r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
-    if (r->status.ok()) {
-      r->offset += block_contents.size() + kBlockTrailerSize;
-    }
-  }
-}
-```
-
-**Table::Finish**
-
-```
-Status TableBuilder::Finish() {
-  Rep* r = rep_;
-  Flush();
-  assert(!r->closed);
-  r->closed = true;
-  BockHandle filter_block_handle, metaindex_block_handle, index_block_handle;
-  // Write filter block
-  // 很明显，将filter block的数据写入文件，并且不压缩；
-  // block的句柄保存在filter block handle中
-  if (ok() && r->filter_block != NULL) {
-    WriteRawBlock(r->filter_block->Finish(), kNoCompression,
-                  &filter_block_handle);
-  }
-
-  // Write metaindex block
-  if (ok()) {
-    //在meta index block中为filter block创建一个索引
-    BlockBuilder meta_index_block(&r->options);
-    if (r->filter_block != NULL) {
-      // Add mapping from "filter.Name" to location of filter data
-      std::string key = "filter.";
-      key.append(r->options.filter_policy->Name());
-      std::string handle_encoding;
-      filter_block_handle.EncodeTo(&handle_encoding);
-      meta_index_block.Add(key, handle_encoding);
-    }
-    //将meta index block写入文件
-    // TODO(postrelease): Add stats and other meta blocks
-    WriteBlock(&meta_index_block, &metaindex_block_handle);
-  }
-
-  // Write index block
-  // 将index block写入文件
-  if (ok()) {
-    if (r->pending_index_entry) {
-      r->options.comparator->FindShortSuccessor(&r->last_key);
-      std::string handle_encoding;
-      r->pending_handle.EncodeTo(&handle_encoding);
-      r->index_block.Add(r->last_key, Slice(handle_encoding));
-      r->pending_index_entry = false;
-    }
-    WriteBlock(&r->index_block, &index_block_handle);
-  }
-
-  // Write footer
-  //写入footer, 可以参考图2-2 SST Layout
-  if (ok()) {
-    Footer footer;
-    footer.set_metaindex_handle(metaindex_block_handle);
-    footer.set_index_handle(index_block_handle);
-    std::string footer_encoding;
-    footer.EncodeTo(&footer_encoding);
-    r->status = r->file->Append(footer_encoding);
-    if (r->status.ok()) {
-      r->offset += footer_encoding.size();
-    }
-  }
-  return r->status;
-}
-```
-
-### SST的Iterator接口
-
-在Leveldb中，通过Iterator来读取SST文件。读取SST文件主要有随机读取一个Key-Value, 和完整读取整个文件的Key-Value. 前者，用户完成用户的数据读取工作，或者主要用在Compaction的过程中。
-SST的Iterator实现主要在table.{h, cc}文件中，由Table类实现, 主要实现了```Open, NewIterator, ApproximateOffsetOf``` 三个接口。
-
-**Table::Open**
-
-```
-Status Table::Open(const Options& options,
-                   RandomAccessFile* file,
-                   uint64_t size,
-                   Table** table) {
-  *table = NULL;
-  if (size < Footer::kEncodedLength) {
-    return Status::InvalidArgument("file is too short to be an sstable");
-  }
-
-  // 注意传入的参数size, 知道size 后可以定位footer了，因为footer在文件结尾，且固定长度。
-  // 换句话说，这里可以获取footer在文件中的offset 和 size.
-  char footer_space[Footer::kEncodedLength];
-  Slice footer_input;
-  Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
-                        &footer_input, footer_space);
-  if (!s.ok()) return s;
-
-  // 解析footer, 将metablock index, block index等读出
-  Footer footer;
-  s = footer.DecodeFrom(&footer_input);
-  if (!s.ok()) return s;
-
-  // Read the index block
-  BlockContents contents;
-  Block* index_block = NULL;
-  // 读出索引block到内存，方便读取文件的data block
-  if (s.ok()) {
-    s = ReadBlock(file, ReadOptions(), footer.index_handle(), &contents);
-    if (s.ok()) {
-      index_block = new Block(contents);
-    }
-  }
-
-  if (s.ok()) {
-    // 读出filter block, 将这部分数据读到内存，有利于加快读操作
-    // We've successfully read the footer and the index block: we're
-    // ready to serve requests.
-    Rep* rep = new Table::Rep;
-    rep->options = options;
-    rep->file = file;
-    rep->metaindex_handle = footer.metaindex_handle();
-    rep->index_block = index_block;
-    rep->cache_id = (options.block_cache ? options.block_cache->NewId() : 0);
-    rep->filter_data = NULL;
-    rep->filter = NULL;
-    *table = new Table(rep);
-    (*table)->ReadMeta(footer);
-  } else {
-    if (index_block) delete index_block;
-  }
-
-  return s;
-}
-```
-
-**Table::NewIterator**
-
-该函数调用NewTwoLevelIterator, 我们注意该函数的参数， 一个是index_block->NewIterator(), 还有一个函数指针BlockReader. 代码如下：
-
-```
-Iterator* Table::NewIterator(const ReadOptions& options) const {
-  return NewTwoLevelIterator(
-      rep_->index_block->NewIterator(rep_->options.comparator),
-      &Table::BlockReader, const_cast<Table*>(this), options);
-}
-```
+ 
