@@ -59,7 +59,23 @@ Block是由一系列Record构成。每一条Record由Header和Content部分组�
 
 **Data Block读取** 
 
+在leveldb中，读取操作都是通过Iterator来进行的。使用Iterator的好处是，可以提供统一的接口，保持代码风格一致；还可以同时拥有批量和随机读取的功能。可谓一举多得。
 
+其实，明白Data Block的布局后，很容易想到如何实现随机和批量读取Data Block的接口了。读取Block之前，我们需要获取Block的句柄，也就是预读取的Block在文件中的Offset 以及 Size。在构建Data Block时候，在Block的末尾添加了固定字节数（5字节）的Trailer数据。通过如下步骤，可以把Block的Data Entry读入内存，并读出Restart Point数组：
+
+* 从文件中读取Size + 5 bytes内容到内存；
+* 解析上述内容的最后5字节，获取CRC以及压缩类型，判断数据是否损坏，或者需要解压缩；
+* 获得Block的内容后，将最后4字节解析为Restart Point Count, 获得RestartPoint 数组的长度；
+* 根据Restart Point 数组的长度，计算Restart Point数组的起始地址（数组元素是4字节）；
+* 根据上面步骤，可以确定Data Entry的区域，以及Restart Point数组区域；
+
+接下来我们看如何随机读取一个Key。 假设我们预读取的key 为target. 那么我们可以利用RestartPoint数组进行二分查找，定位到目标Key的前一个RestartPointKey，然后通过线性查找，定位到目标Key；具体过程可以这样描述：
+
+* 首先将Restart Point数组N/2 - 1处元素对应的Key 与目标key进行比较；
+* 若比N/2 - 1处的Key大于目标Key，则在0 ~ N/2 - 1之间重复上述查找；
+* 否则在N/2 - 1 ~ N 之间重复上述查找；
+
+上述步骤的结果是，找到离目标Key最近的一个Restart Point Key. 那么接下来，从这个Restart Point key开始，挨个比较，直到目标Key存在，或者目标Key不存在。
 
 **Meta Data Block**
 
@@ -84,6 +100,31 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 
 ## 2.4 磁盘文件（SST）构建
 
+在分析了SST布局，以及Data Block的构建和读取后，接下来就比较容易说明如何构建SST文件了。 在leveldb中，需要构建SST文件的场景有：
+
+* 内存中有序的Key-Value需要Dump 到level 0;
+* 在Compaction的场景中，多个文件合并生成一个新的SST文件。
+
+
+在SST文件的构建过程中，用户是通过接口将有序的Key-Value依次加入到文件中，到文件尺寸或者Key-Value处理完时，调用Finish表示构建文件完成了。实际上，具体的构建过程比较有趣：
+
+* 1） 用户调用Add接口添加一个Key-Value;
+* 2)  若当前的Data Block未满，则将1）中的Key-Value添加到当前Data Block中；
+* 3） 若当前的Data Block已经满了，则：
+      * a) 为根据当前Block的所有Key调用filter-policy创建一个filter,并把filter的内容加到metablock中；
+      * b) 根据当前Block的最后一个key（称为A), 和当前输入的key(称为B），结合Comparator 找到一个比A大，且比B小的Key——X，
+      * c) 将{X, 当前Block在文件中的offset 和 size} 作为Key-Value添加到Index Block中；
+* 4)  重复上述步骤，直到所有key-value处理完毕，或者文件大小超过阈值才结束；
+* 5） 为meta block创建索引数据，写入meta index block;
+* 6)  将meta block 写入文件；
+* 7） 将meta index block写入文件；
+* 8） 将index block写入文件；
+* 6)  构建Footer，填充meta 相关的值，并写入文件；
+
+
+![SST Construction](http://i.imgur.com/x4rhV80.png)
+
+图2-4 SST文件的构造示意图
  
 
 
