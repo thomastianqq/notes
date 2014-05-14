@@ -108,17 +108,17 @@ SST文件为每一个Block创建了索引。这些索引数据存储为一个Dat
 
 在SST文件的构建过程中，用户是通过接口将有序的Key-Value依次加入到文件中，到文件尺寸或者Key-Value处理完时，调用Finish表示构建文件完成了。实际上，具体的构建过程比较有趣：
 
-* 1） 用户调用Add接口添加一个Key-Value;
+* 1)  用户调用Add接口添加一个Key-Value;
 * 2)  若当前的Data Block未满，则将1）中的Key-Value添加到当前Data Block中；
-* 3） 若当前的Data Block已经满了，则：
+* 3)  若当前的Data Block已经满了，则：
       * a) 为根据当前Block的所有Key调用filter-policy创建一个filter,并把filter的内容加到metablock中；
       * b) 根据当前Block的最后一个key（称为A), 和当前输入的key(称为B），结合Comparator 找到一个比A大，且比B小的Key——X，
       * c) 将{X, 当前Block在文件中的offset 和 size} 作为Key-Value添加到Index Block中；
 * 4)  重复上述步骤，直到所有key-value处理完毕，或者文件大小超过阈值才结束；
-* 5） 为meta block创建索引数据，写入meta index block;
+* 5)  为meta block创建索引数据，写入meta index block;
 * 6)  将meta block 写入文件；
-* 7） 将meta index block写入文件；
-* 8） 将index block写入文件；
+* 7)  将meta index block写入文件；
+* 8)  将index block写入文件；
 * 6)  构建Footer，填充meta 相关的值，并写入文件；
 
 
