@@ -4,6 +4,7 @@
 本章介绍Leveldb的Compaction机制。在此之前，需要介绍leveldb的文件组织结构，以及Snapshot的实现。明白这些后，更容易理解compaction中的一些细节问题。
 
 ## 3.1 文件组织结构
+
 在leveldb中，任何一个时刻，文件被组织成为层次结构，有如下特点：
 * 1) 每一个层次最多能够存储的数据量是有限制的, 更高层可以容纳更多数据量；
 * 2) 除第0层外，其他每一层数据是有序的，文件与文件之间不存在Key范围交叠；
@@ -20,6 +21,7 @@ Snapshot是一种快照机制，使得读操作不受写操作的影响。在lev
 事情还不是这么简单，因为leveldb有后台线程会适时作compaction操作，该操作会删除数据。显然，compaction操作不能删除对任何一个snapshot可见的KV。
 
 显然，SNAPSHOT是有代价的。若系统长时间保留SNAPSHOT，会导致冗余数据不能尽快删除，读放大，某些KV多次compaction都无法删除，浪费磁盘IO以及CPU资源。 故在使用完SNAPSHOT后应该尽快释放。
+
 ## 3.3 Compaction
 
 在leveldb中，所谓Compaction操作就是删除冗余数据的操作。Leveldb将对磁盘的随机写操作转化为一次写内存和一次顺序写磁盘操作。对某一个数Key-Value(下文简称KV)的更新，不是去定位到该KV，进行更新。而是，直接新写入新的KV。在读的时候，总是向用户返回最新写入的数据。那么，leveldb中就会存在一个KV的多个“版本”， 那么除了该KV的最进一次修改的版本外，其他的都是无效数据，可以删除了。这些无效数据会在特定的时候被系统删除掉。
@@ -31,12 +33,15 @@ Leveldb中有专门的后台线程执行Compaction操作。
 在leveldb的Compaction实现中，有三种类型的Compation操作，分别是：Size Comacption, Seek Compaction 和  Manual Compaction。 其中，Manual Compaction操作以用户接口的形式提供，用户可随时调用，这里就不详细展开。
 
 ** Size Compaction **
+
 Leveldb中的文件分层组织，每一次中允许存放的文件总的大小是有限的。所谓Size Compaction是指，当某一层文件总数据量超过阈值后，就会触发Compaction操作，来消除冗余数据，达到减少该层文件总数据量。当冗余数据减少了，就会有效减缓读放大程度。这种情况触发的Compaction称之为Size Compaction。
 
 ** Seek Compaction **
+
 同样，由于Leveldb中的文件分层组织，读取某一个KV的时候，会首先在呢次中读取，若没有命中，则从level i的文件读取，若没有命中则从level i + 1层的文件读取（这里 i 依次取值0,1,...,N)。最终，要么命中，要么数据不存在。 这里有个问题，若第i层某个文件F多次被读入内存，却没有命中欲读取的KV，而是从其更高level的文件中读取到了KV。 系统为每个文件维护一个计数器（拥有一个初始值），当这个文件出现上述事件后，该文件的计数器就减1。当计数器减少到0了，就会触发对该文件的Compaction操作，称之为Seek Compaction。
 
 **allowed_seeks计数器初始值**
+
 在leveldb中，每个文件维护一个allowed_seek的计数器，该计数器的初始值在文件创建之初就会分配一个值。这个值是怎么分配的呢？
 
 在代码中有如下一段注释：
@@ -139,11 +144,13 @@ leveldb在这里做了优化，在上述选取的level i + 1文件数量不变�
 SNAPSHOT的sequence 为Si, 相同Key的KV集合某个Key X（记其sequence Sx)。 若该KV集合中第一次出现KV满足Sx <= Si，那么该KV，就记为对SNAPSHOT Si可见KV。 某相同Key构成的KV集合，存在对最早SNAPSHOT Si可见的KV X， 那么，大于等于KV X的sequence的KV都需要保留，不能删除。而对于，该KV集合的剩余部分构成集合，可以按上述删除原则来判定是删除还是保留。 这里不重复叙述了。
 
 保留的KV被顺序写入输出文件中。
+
 #### 3.8 Compaction操作输出文件
 
 对于Compaction过程中产生的新文件，将将添加到level i + 1层中，同时需要将参与Compaction的输入文件从level i 和level i + 1中删除掉。这个过程改变了当前文件的组织结构。正如2.1节所述，文件的组织结构变动了，系统需要创建一个新的文件结构视图来替换当前的视图。
 
 而文件变动的具体信息保存在VersionEdit中。具体过程如下：
+
 * 1) 系统根据当前文件结构描述Current Version的内容，结合本次VersionEdit, 创建新的Version;
 * 2) 对于新的文件结构（Version中记录）中的每一个文件，为每一层计算一个Score, 用于反映是否触发compaction操作，最后选择一个数值最大的Score以及对应的level；
 * 3) 对于新增加的文件计算allowed_seek计数器的初始值；
