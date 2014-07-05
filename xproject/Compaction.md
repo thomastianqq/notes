@@ -32,11 +32,11 @@ Leveldb中有专门的后台线程执行Compaction操作。
 
 在leveldb的Compaction实现中，有三种类型的Compation操作，分别是：Size Comacption, Seek Compaction 和  Manual Compaction。 其中，Manual Compaction操作以用户接口的形式提供，用户可随时调用，这里就不详细展开。
 
-** Size Compaction **
+**Size Compaction**
 
 Leveldb中的文件分层组织，每一次中允许存放的文件总的大小是有限的。所谓Size Compaction是指，当某一层文件总数据量超过阈值后，就会触发Compaction操作，来消除冗余数据，达到减少该层文件总数据量。当冗余数据减少了，就会有效减缓读放大程度。这种情况触发的Compaction称之为Size Compaction。
 
-** Seek Compaction **
+**Seek Compaction**
 
 同样，由于Leveldb中的文件分层组织，读取某一个KV的时候，会首先在呢次中读取，若没有命中，则从level i的文件读取，若没有命中则从level i + 1层的文件读取（这里 i 依次取值0,1,...,N)。最终，要么命中，要么数据不存在。 这里有个问题，若第i层某个文件F多次被读入内存，却没有命中欲读取的KV，而是从其更高level的文件中读取到了KV。 系统为每个文件维护一个计数器（拥有一个初始值），当这个文件出现上述事件后，该文件的计数器就减1。当计数器减少到0了，就会触发对该文件的Compaction操作，称之为Seek Compaction。
 
@@ -66,6 +66,7 @@ Leveldb中的文件分层组织，每一次中允许存放的文件总的大小�
 当某个文件的allowed_seeks计数器减少到0的时候， 说明这个文件经过了 allowed_seeks初始值次Seek 操作，并且没有命中KV，而从更高level中命中了KV，这就造成了读放大。在这种情况下，需要通过一次Compaction操作干掉这个文件，达到减少读放大的目的。
 
 ** 检查触发Compaction**
+
 在leveldb中，每次写操作前，和读操作后，会有机会检查是否触发Compaction操作。
 
 ## 3.5 Compaction操作流程
