@@ -65,7 +65,7 @@ Leveldb中的文件分层组织，每一次中允许存放的文件总的大小�
 
 当某个文件的allowed_seeks计数器减少到0的时候， 说明这个文件经过了 allowed_seeks初始值次Seek 操作，并且没有命中KV，而从更高level中命中了KV，这就造成了读放大。在这种情况下，需要通过一次Compaction操作干掉这个文件，达到减少读放大的目的。
 
-** 检查触发Compaction**
+**检查触发Compaction**
 
 在leveldb中，每次写操作前，和读操作后，会有机会检查是否触发Compaction操作。
 
