@@ -3,7 +3,7 @@
 
 本章介绍Leveldb的Compaction机制。在此之前，需要介绍leveldb的文件组织结构，以及Snapshot的实现。明白这些后，更容易理解compaction中的一些细节问题。
 
-## 2.1 文件组织结构
+## 3.1 文件组织结构
 在leveldb中，任何一个时刻，文件被组织成为层次结构，有如下特点：
 * 1) 每一个层次最多能够存储的数据量是有限制的, 更高层可以容纳更多数据量；
 * 2) 除第0层外，其他每一层数据是有序的，文件与文件之间不存在Key范围交叠；
@@ -11,7 +11,7 @@
 
 只有在Compaction或者，内存数据Dump到磁盘后，会改变文件的层次结构，系统创建一个该层次结构的一个全新的视图，替换现有视图。在leveldb中，这个文件层次结构的视图抽象为Version。 当有文件增加或减少的时候，会记录在VersionEdit中。通过当前Version 与 VersionEdit 中的信息，生成新的视图Version。系统会维护活跃的Version链表。当旧的Version上的所有读操作都结束了，那么该Version也就被释放了。
 
-## 2.2 Snapshot实现
+## 3.2 Snapshot实现
 
 Snapshot是一种快照机制，使得读操作不受写操作的影响。在leveldb中，借助每一个Key的sequence完美的实现了该功能。
 
@@ -20,13 +20,13 @@ Snapshot是一种快照机制，使得读操作不受写操作的影响。在lev
 事情还不是这么简单，因为leveldb有后台线程会适时作compaction操作，该操作会删除数据。显然，compaction操作不能删除对任何一个snapshot可见的KV。
 
 显然，SNAPSHOT是有代价的。若系统长时间保留SNAPSHOT，会导致冗余数据不能尽快删除，读放大，某些KV多次compaction都无法删除，浪费磁盘IO以及CPU资源。 故在使用完SNAPSHOT后应该尽快释放。
-## 2.2 Compaction
+## 3.3 Compaction
 
 在leveldb中，所谓Compaction操作就是删除冗余数据的操作。Leveldb将对磁盘的随机写操作转化为一次写内存和一次顺序写磁盘操作。对某一个数Key-Value(下文简称KV)的更新，不是去定位到该KV，进行更新。而是，直接新写入新的KV。在读的时候，总是向用户返回最新写入的数据。那么，leveldb中就会存在一个KV的多个“版本”， 那么除了该KV的最进一次修改的版本外，其他的都是无效数据，可以删除了。这些无效数据会在特定的时候被系统删除掉。
 
 Leveldb中有专门的后台线程执行Compaction操作。
 
-## 2.3 Compaction触发的条件
+## 3.4 Compaction触发的条件
 
 在leveldb的Compaction实现中，有三种类型的Compation操作，分别是：Size Comacption, Seek Compaction 和  Manual Compaction。 其中，Manual Compaction操作以用户接口的形式提供，用户可随时调用，这里就不详细展开。
 
@@ -63,7 +63,7 @@ Leveldb中的文件分层组织，每一次中允许存放的文件总的大小�
 ** 检查触发Compaction**
 在leveldb中，每次写操作前，和读操作后，会有机会检查是否触发Compaction操作。
 
-## 2.4 Compaction操作流程
+## 3.5 Compaction操作流程
 
 这里不展开Manual Compaction。无论Size Compaction还是Seek Compaction，其基本流程是相同的（下文不具体区分两种类型的Compaction, 均用Compaction操作代替）。 具体流程如下：
 
@@ -77,7 +77,7 @@ Leveldb中的文件分层组织，每一次中允许存放的文件总的大小�
 
 上述流程如下图表示：
 
-## 2.5 选取参与Compaction操作的文件
+## 3.6 选取参与Compaction操作的文件
 
 在leveldb目前实现中，除了level 0，其他level上的Compaction操作每次值选一个文件作为输入。对于level 0而言，由于文件之间Key范围有重叠，所以，对于某一个Key范围而言，可能包含多个文件。因此，在Compaction的过程中，需要将这些文件全部包含。
 
@@ -111,7 +111,7 @@ leveldb在这里做了优化，在上述选取的level i + 1文件数量不变�
 
 为了优化Compaction过程，在选取level + 1层上参与compaction文件的时候，会根据其Key范围，选取level + 2层（如果存在的话）上包含该范围的最小文件集合。后文叙述为什么这样作。
 
-## 2.6 Compaction操作的详解
+## 3.7 Compaction操作的详解
 
 在选取了compaction操作所需的文件后，就要进行具体去重冗余数据的过程了。 这些文件会被读入内存，在内存中，这些数据按Key有序（按用户自定义或者系统默认的Comparator确定Key的先后顺序），相同的Key按其Sequence由大到小排序。由于文件中的KV是有序的，这个过程主要消耗在磁盘IO。
 
@@ -139,7 +139,7 @@ leveldb在这里做了优化，在上述选取的level i + 1文件数量不变�
 SNAPSHOT的sequence 为Si, 相同Key的KV集合某个Key X（记其sequence Sx)。 若该KV集合中第一次出现KV满足Sx <= Si，那么该KV，就记为对SNAPSHOT Si可见KV。 某相同Key构成的KV集合，存在对最早SNAPSHOT Si可见的KV X， 那么，大于等于KV X的sequence的KV都需要保留，不能删除。而对于，该KV集合的剩余部分构成集合，可以按上述删除原则来判定是删除还是保留。 这里不重复叙述了。
 
 保留的KV被顺序写入输出文件中。
-#### 2.7 Compaction操作输出文件
+#### 3.8 Compaction操作输出文件
 
 对于Compaction过程中产生的新文件，将将添加到level i + 1层中，同时需要将参与Compaction的输入文件从level i 和level i + 1中删除掉。这个过程改变了当前文件的组织结构。正如2.1节所述，文件的组织结构变动了，系统需要创建一个新的文件结构视图来替换当前的视图。
 
@@ -150,7 +150,7 @@ SNAPSHOT的sequence 为Si, 相同Key的KV集合某个Key X（记其sequence Sx)�
 * 4) 将本次VersionEdit对象序列化后，记录到MANIFEST文件中；
 * 5) 将新的Version替换系统当前使用的Version。
 
-#### 2.8 小结
+#### 3.9 小结
 
 本章节主要叙述了Leveldb的Compaction过程的实现。
 
