@@ -24,7 +24,7 @@ Contents:
   * [2.2 磁盘文件(SST)布局](https://github.com/fengmao/notes/blob/master/xproject/BaseDefination.md#22-%E7%A3%81%E7%9B%98%E6%96%87%E4%BB%B6sst%E5%B8%83%E5%B1%80)
   * [2.3 构建磁盘文件(SST)](https://github.com/fengmao/notes/blob/master/xproject/BaseDefination.md#23-%E7%A3%81%E7%9B%98%E6%96%87%E4%BB%B6sst%E6%9E%84%E5%BB%BA)
   * [2.4 读取磁盘文件(SST)](https://github.com/fengmao/notes/blob/master/xproject/BaseDefination.md#24-%E8%AF%BB%E5%8F%96sst%E6%96%87%E4%BB%B6)
-* [3. Compaction机制](www.google.com.hk)
+* [3. Compaction机制](https://github.com/fengmao/notes/blob/master/xproject/Compaction.md)
 
 
 
