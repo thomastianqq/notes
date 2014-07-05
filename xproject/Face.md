@@ -34,7 +34,6 @@ Contents:
   * [3.7 Compaction过程详解](https://github.com/fengmao/notes/blob/master/xproject/Compaction.md#37-compaction%E6%93%8D%E4%BD%9C%E7%9A%84%E8%AF%A6%E8%A7%A3)
   * [3.8 Compaction操作后续处理](https://github.com/fengmao/notes/blob/master/xproject/Compaction.md#38-compaction%E6%93%8D%E4%BD%9C%E8%BE%93%E5%87%BA%E6%96%87%E4%BB%B6)
   * [3.9 小结](https://github.com/fengmao/notes/blob/master/xproject/Compaction.md#39-%E5%B0%8F%E7%BB%93)
-
 * [4. 读数据操作分析](www.undefined.com)
 * [5. 写数据操作分析](www.undefined.com)
 * [6. Bulk Write操作分析](www.undefined.com)
